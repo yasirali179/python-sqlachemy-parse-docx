@@ -164,7 +164,7 @@ def get_publishable_information(data):
         row = 2
         while row < len(data):
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
+            if len(get_text(row_data[1])) > 0 and "N/A" != get_text(row_data[0]):
                 print("Client " + str(row-1) + " Details")
                 col = 1
                 while col < len(row_data):
@@ -218,7 +218,7 @@ def get_confidential_information(data):
         row = 2
         while row < len(data):
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
+            if len(get_text(row_data[1])) > 0 and "N/A" != get_text(row_data[0]):
                 print("Client " + str(row-1) + " Details")
                 col = 1
                 while col < len(row_data):
@@ -232,7 +232,6 @@ def get_confidential_information(data):
     elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and (("Confidential Work Highlights" in data[0][0][0] and "Publishable Matter" in data[1][0][0]) or ("Confidential Matter" in data[0][0][0])):
         print(get_text(data[0][0]))
         row = 2
-        # import pdb; pdb.set_trace();
         while row < len(data):
             row_data = data[row]
             if len(get_text(row_data[0])) > 0 and "N/A" not in get_text(row_data[0]):
