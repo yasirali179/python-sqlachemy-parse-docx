@@ -1,5 +1,5 @@
 import os
-from db import create, insert_submission_data, insert_preliminary_information, insert_department_information, insert_feedback, insert_publishable_information, insert_confidential_information
+from db import create, insert_submission_data, insert_preliminary_information, insert_department_information, insert_feedback, insert_publishable_information, insert_confidential_information, check_db
 from docx2python import docx2python
 from azure.storage.blob import ContainerClient
 
@@ -11,12 +11,12 @@ def azure():
     blob_list = container.list_blobs()
 
     for blob in blob_list:
-        if ".docx" in blob.name:
+        if ".docx" in blob.name and "3164475.docx" in blob.name.split('/')[2]:
             print(blob.name + '\n')
             blob_string = blob.name.split('/')
-            id = insert_submission_data(
+            id = check_db(
                 blob_string[0], blob_string[1], blob_string[2].split('.')[0])
-            if id is not None:
+            if id is None:
                 blob_data = container.download_blob(blob)
                 if os.path.exists("BlockDestination.docx"):
                     os.remove("BlockDestination.docx")
@@ -24,21 +24,23 @@ def azure():
                     blob_data.readinto(my_blob)
                 result = docx2python('BlockDestination.docx')
                 parsed_data = parsing(result)
-                save_data(id, parsed_data)
+                new_id = insert_submission_data(
+                    blob_string[0], blob_string[1], blob_string[2].split('.')[0])
+                save_data(new_id, parsed_data)
             break
 
 
 def save_data(id, parsed_data):
+
     insert_preliminary_information(
         int(id), parsed_data['preliminary_information'])
     insert_department_information(
-        int(id), parsed_data['preliminary_information'])
-    insert_feedback(int(id), parsed_data['preliminary_information'])
-    insert_publishable_information(
-        int(id), parsed_data['preliminary_information'])
-    insert_confidential_information(
-    int(id), parsed_data['confidential_information'])
-    
+        int(id), parsed_data['department_information'])
+    insert_feedback(int(id), parsed_data['feedback'])
+    # insert_publishable_information(
+    #     int(id), parsed_data['preliminary_information'])
+    # insert_confidential_information(
+    #     int(id), parsed_data['confidential_information'])
 
 
 def parsing(result):
@@ -49,7 +51,6 @@ def parsing(result):
     feedback = {}
     publishable_information = {}
     confidential_information = {}
-
     while i < len(result.body):
         if len(result.body[i]) >= 2:
             data = result.body[i]
@@ -81,7 +82,7 @@ def get_preliminary_information(data):
         row = 2
         while row < len(data):
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0:
+            if len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
                 while col < len(row_data):
@@ -90,7 +91,9 @@ def get_preliminary_information(data):
                     elif col == 1:
                         detail['email'] = get_text(row_data[col])
                     elif col == 2:
-                        detail['phone'] = get_text(row_data[col])
+                        phone = get_text(row_data[col]).replace(" ", "").replace(
+                            "(", "").replace(")", "").replace("-", "")
+                        detail['phone'] = phone
                     col = col+1
                 if len(detail) != 0:
                     parsed_data["contact_person_details"].append(detail)
@@ -106,12 +109,15 @@ def get_department_information(data):
         parsed_data["number_of_partners"] = get_text(data[1][0])
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "qualified lawyers" in data[0][0][0]:
         parsed_data["qualified_lawyers"] = get_text(data[1][0])
+    elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and "Foreign Desks" in data[0][0][0]:
+        import pdb; pdb.set_trace();
+        parsed_data["department_best_known"] = get_text(data[1][0])
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Heads of department" in data[0][0][0]:
         parsed_data["heads_of_department_details"] = []
         row = 2
         while row < len(data):
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0:
+            if len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
                 while col < len(row_data):
@@ -130,7 +136,7 @@ def get_department_information(data):
         row = 2
         while row < len(data):
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0:
+            if len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
                 while col < len(row_data):
@@ -150,7 +156,7 @@ def get_department_information(data):
         while row < len(data):
 
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0:
+            if len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
                 while col < len(row_data):
@@ -170,7 +176,7 @@ def get_department_information(data):
         while row < len(data):
 
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0:
+            if len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
                 while col < len(row_data):

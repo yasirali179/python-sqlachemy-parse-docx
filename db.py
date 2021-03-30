@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, Float, Boolean
+from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, Float, Boolean, and_
 meta = MetaData()
 engine = create_engine('sqlite:///data.db', echo=True)
 
@@ -171,26 +171,25 @@ confidential_matters = Table(
 )
 
 
-def insert_submission_data(publication_id, subsection_id, submissions_id):
-    data = submission_data.select().where(submission_data.c.publication_id == publication_id and
-                                          submission_data.c.subsection_id == subsection_id and
-                                          submission_data.c.submissions_id == submissions_id
+def check_db(publication_id, subsection_id, submissions_id):
+    data = submission_data.select().where(and_(submission_data.c.publication_id == publication_id,
+                                               submission_data.c.subsection_id == subsection_id,
+                                               submission_data.c.submissions_id == submissions_id)
                                           )
     conn = engine.connect()
-    result = conn.execute(data)
-    count = 0
-    for row in result:
-        count = count+1
-
-    id = result.scalar()
-    if count == 0:
-        ins = submission_data.insert().values(publication_id=publication_id,
-                                              subsection_id=subsection_id, submissions_id=submissions_id)
-        conn = engine.connect()
-        result = conn.execute(ins)
-        return result.inserted_primary_key[0]
+    result = conn.execute(data).fetchall()
+    if len(result) == 0:
+        return None
     else:
-        return result.scalar()
+        return result[-1][0]
+
+
+def insert_submission_data(publication_id, subsection_id, submissions_id):
+    ins = submission_data.insert().values(publication_id=publication_id,
+                                          subsection_id=subsection_id, submissions_id=submissions_id)
+    conn = engine.connect()
+    result = conn.execute(ins)
+    return result.inserted_primary_key[0]
 
 
 def insert_preliminary_information(submission_data_id, data):
@@ -201,12 +200,13 @@ def insert_preliminary_information(submission_data_id, data):
                                                      )
     conn = engine.connect()
     result = conn.execute(insert)
+    id = result.inserted_primary_key[0]
     for person in data["contact_person_details"]:
         detailed = contact_person_arrange_interviews.insert().values(
             name=person['name'],
             email=person['email'],
             phone=person['phone'],
-            preliminary_information_id=result.inserted_primary_key[0]
+            preliminary_information_id=id
         )
         conn = engine.connect()
         result = conn.execute(detailed)
@@ -214,32 +214,145 @@ def insert_preliminary_information(submission_data_id, data):
 
 def insert_department_information(submission_data_id, data):
     insert = department_information.insert().values(department_name=data['department_name'],
-                                                     number_of_partners=int(data['number_of_partners']),
-                                                     qualified_lawyers=int(data['qualified_lawyers']),
-                                                     department_best_known_for=data['qualified_lawyers'],
-                                                     submission_data_id= submission_data_id
-                                                     )
+                                                    number_of_partners=int(
+                                                        data['number_of_partners']),
+                                                    qualified_lawyers=int(
+                                                        data['qualified_lawyers']),
+                                                    department_best_known_for=data['department_best_known'],
+                                                    submission_data_id=submission_data_id
+                                                    )
     conn = engine.connect()
     result = conn.execute(insert)
-    for person in data["contact_person_details"]:
-        detailed = contact_person_arrange_interviews.insert().values(
+    id = result.inserted_primary_key[0]
+    for person in data["heads_of_department_details"]:
+        detailed = heads_of_department.insert().values(
             name=person['name'],
             email=person['email'],
             phone=person['phone'],
-            preliminary_information_id=result.inserted_primary_key[0]
+            department_information_id=id
         )
         conn = engine.connect()
+        result = conn.execute(detailed)
+
+    for person in data["hires_details"]:
+        detailed = hires.insert().values(
+            name=person['name'],
+            joined=person['joined'],
+            joined_from=person['joined_from'],
+            department_information_id=id
+        )
+        conn = engine.connect()
+        result = conn.execute(detailed)
+
+    for person in data["ranked_lawyers_details"]:
+        detailed = ranked_lawyers_information.insert().values(
+            name=person['name'],
+            comment=person['comments'],
+            partner=person['is_partner'],
+            department_information_id=id
+        )
+        conn = engine.connect()
+        result = conn.execute(detailed)
+
+    for person in data["unranked_lawyers_details"]:
+        detailed = unranked_lawyers_information.insert().values(
+            name=person['name'],
+            comment=person['comments'],
+            partner=person['is_partner'],
+            department_information_id=id
+        )
+        conn = engine.connect()
+        result = conn.execute(detailed)
 
 
 def insert_feedback(submission_data_id, data):
-    return
+    insert = feedback.insert().values(provious_coverage_feedback=data['previous_coverage_department_feedback'],
+                                      submission_data_id=submission_data_id
+                                      )
+    conn = engine.connect()
+    result = conn.execute(insert)
+    id = result.inserted_primary_key[0]
+    for person in data["barristers_advocates_selected_country_details"]:
+        detailed = barristers_advocates_info.insert().values(
+            name=person['name'],
+            firm=person['firm'],
+            comments=person['comments'],
+            feedback_id=id
+        )
+        conn = engine.connect()
+        result = conn.execute(detailed)
 
 
 def insert_publishable_information(submission_data_id, data):
-    return
+    insert = publishable_information.insert().values(
+        submission_data_id=submission_data_id)
+    conn = engine.connect()
+    result = conn.execute(insert)
+    id = result.inserted_primary_key[0]
+
+    for person in data["publishable_clients_details"]:
+        new_client = False
+        if "YES" in person['is_new_client'].upper():
+            new_client = True
+        insert = publishable_clients.insert().values(
+            name=person['name'],
+            is_new_client=new_client,
+            publishable_information_id=id)
+        conn = engine.connect()
+        result = conn.execute(insert)
+
+    for matter in data["publishable_matters"]:
+        insert = publishable_matters.insert().values(
+            name=matter['name'],
+            summary=matter['summary'],
+            value=matter['matter_value'],
+            cross_border=matter['is_cross_border_metter'],
+            lead_partner=matter['lead_partner'],
+            other_team_members=matter['other_team_members'],
+            other_firms_advising=matter['other_firms_advising'],
+            date_of_completion=matter['date_of_completion'],
+            other_information=matter['other_information'],
+            publishable_information_id=id,
+        )
+        conn = engine.connect()
+        result = conn.execute(insert)
+
 
 def insert_confidential_information(submission_data_id, data):
-    return
+    insert = confidential_information.insert().values(
+        submission_data_id=submission_data_id)
+    conn = engine.connect()
+    result = conn.execute(insert)
+    id = result.inserted_primary_key[0]
+
+    for person in data["confidential_clients_details"]:
+        new_client = False
+        if "YES" in person['is_new_client'].upper():
+            new_client = True
+        insert = confidential_clients.insert().values(
+            name=person['name'],
+            is_new_client=new_client,
+            publishable_information_id=id)
+        conn = engine.connect()
+        result = conn.execute(insert)
+
+    for matter in data["confidential_matters"]:
+        insert = confidential_matters.insert().values(
+            name=matter['name'],
+            summary=matter['summary'],
+            value=matter['matter_value'],
+            cross_border=matter['is_cross_border_metter'],
+            lead_partner=matter['lead_partner'],
+            other_team_members=matter['other_team_members'],
+            other_firms_advising=matter['other_firms_advising'],
+            date_of_completion=matter['date_of_completion'],
+            other_information=matter['other_information'],
+            publishable_information_id=id,
+        )
+        conn = engine.connect()
+        result = conn.execute(insert)
+
+
 # def get_Data():
 #     s = submission_data.select()
 #     conn = engine.connect()
