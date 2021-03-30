@@ -171,18 +171,80 @@ confidential_matters = Table(
 )
 
 
-def insert_Data(publication_id, subsection_id, submissions_id):
-    ins = submission_data.insert().values(publication_id=publication_id,
-                                          subsection_id=subsection_id, submissions_id=submissions_id)
+def insert_submission_data(publication_id, subsection_id, submissions_id):
+    data = submission_data.select().where(submission_data.c.publication_id == publication_id and
+                                          submission_data.c.subsection_id == subsection_id and
+                                          submission_data.c.submissions_id == submissions_id
+                                          )
     conn = engine.connect()
-    result = conn.execute(ins)
+    result = conn.execute(data)
+    count = 0
+    for row in result:
+        count = count+1
+
+    id = result.scalar()
+    if count == 0:
+        ins = submission_data.insert().values(publication_id=publication_id,
+                                              subsection_id=subsection_id, submissions_id=submissions_id)
+        conn = engine.connect()
+        result = conn.execute(ins)
+        return result.inserted_primary_key[0]
+    else:
+        return result.scalar()
 
 
-def get_Data():
-    s = submission_data.select()
+def insert_preliminary_information(submission_data_id, data):
+    insert = preliminary_information.insert().values(firm_name=data['frim_name'],
+                                                     practice_area=data['practice_area'],
+                                                     location_jurisdiction=data['localtion'],
+                                                     submission_data_id=submission_data_id
+                                                     )
     conn = engine.connect()
-    result = conn.execute(s)
-    return result
+    result = conn.execute(insert)
+    for person in data["contact_person_details"]:
+        detailed = contact_person_arrange_interviews.insert().values(
+            name=person['name'],
+            email=person['email'],
+            phone=person['phone'],
+            preliminary_information_id=result.inserted_primary_key[0]
+        )
+        conn = engine.connect()
+        result = conn.execute(detailed)
+
+
+def insert_department_information(submission_data_id, data):
+    insert = department_information.insert().values(department_name=data['department_name'],
+                                                     number_of_partners=int(data['number_of_partners']),
+                                                     qualified_lawyers=int(data['qualified_lawyers']),
+                                                     department_best_known_for=data['qualified_lawyers'],
+                                                     submission_data_id= submission_data_id
+                                                     )
+    conn = engine.connect()
+    result = conn.execute(insert)
+    for person in data["contact_person_details"]:
+        detailed = contact_person_arrange_interviews.insert().values(
+            name=person['name'],
+            email=person['email'],
+            phone=person['phone'],
+            preliminary_information_id=result.inserted_primary_key[0]
+        )
+        conn = engine.connect()
+
+
+def insert_feedback(submission_data_id, data):
+    return
+
+
+def insert_publishable_information(submission_data_id, data):
+    return
+
+def insert_confidential_information(submission_data_id, data):
+    return
+# def get_Data():
+#     s = submission_data.select()
+#     conn = engine.connect()
+#     result = conn.execute(s)
+#     return result
 
 
 # def add_PreliminaryInformation():
