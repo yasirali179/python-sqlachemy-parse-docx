@@ -1,7 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, Float, Boolean, and_
 meta = MetaData()
-engine = create_engine('sqlite:///data.db', echo=True)
+
+engine = create_engine('postgresql://chambersadmin@historical-submissions-db:!:&<G9n5Jc?L@historical-submissions-db.postgres.database.azure.com:5432/postgres', echo=True)
 
 
 submission_data = Table(
@@ -266,7 +267,12 @@ def insert_department_information(submission_data_id, data):
 
 
 def insert_feedback(submission_data_id, data):
-    insert = feedback.insert().values(provious_coverage_feedback=data['previous_coverage_department_feedback'],
+    import pdb; pdb.set_trace()
+    if 'previous_coverage_department_feedback' in data:
+        previous_coverage_department_feedback = data['previous_coverage_department_feedback']
+    else:
+        previous_coverage_department_feedback = ''
+    insert = feedback.insert().values(provious_coverage_feedback=previous_coverage_department_feedback,
                                       submission_data_id=submission_data_id
                                       )
     conn = engine.connect()

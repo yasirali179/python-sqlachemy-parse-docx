@@ -1,4 +1,6 @@
 import os
+import subprocess
+import re
 from db import create, insert_submission_data, insert_preliminary_information, insert_department_information, insert_feedback, insert_publishable_information, insert_confidential_information, check_db
 from docx2python import docx2python
 from azure.storage.blob import ContainerClient
@@ -8,16 +10,21 @@ department_information = {}
 feedback = {}
 publishable_information = {'publishable_matters': []}
 confidential_information = {'confidential_matters': []}
+connection_string = "DefaultEndpointsProtocol=https;AccountName=sthistoricalsubmissions;AccountKey=5OlZ+H0GndSzvBf13VfUTXAfdQOKJ1lsWBcp+h8Zst17ks44aBu1skOdOLUOlTisdMy7hEQlwyjzvjpSOeFxfw==;EndpointSuffix=core.windows.net"
+container_name = "submissions"
 
 
 def azure():
-    connection_string = "DefaultEndpointsProtocol=https;AccountName=sthistoricalsubmissions;AccountKey=5OlZ+H0GndSzvBf13VfUTXAfdQOKJ1lsWBcp+h8Zst17ks44aBu1skOdOLUOlTisdMy7hEQlwyjzvjpSOeFxfw==;EndpointSuffix=core.windows.net"
+    global connection_string, container_name
+    # Get blobs from container of submissions
     container = ContainerClient.from_connection_string(
-        connection_string, container_name="submissions")
+        connection_string, container_name=container_name)
+    # Get list of the blob
     blob_list = container.list_blobs()
-
+    counter = 0
     for blob in blob_list:
         if ".docx" in blob.name and "3164475.docx" in blob.name.split('/')[2]:
+            #if ".DOCX" in name.upper() or ".DOC" in name.upper():
             print(blob.name + '\n')
             blob_string = blob.name.split('/')
             id = check_db(
@@ -28,11 +35,18 @@ def azure():
                     os.remove("BlockDestination.docx")
                 with open("./BlockDestination.docx", "wb") as my_blob:
                     blob_data.readinto(my_blob)
+
+                # if ".DOC" in name.upper():
+                #     subprocess.call(
+                #         ['soffice', '--headless', '--convert-to', 'docx', "BlockDestination.docx"])
+
                 result = docx2python('BlockDestination.docx')
                 parsing(result)
                 new_id = insert_submission_data(
                     blob_string[0], blob_string[1], blob_string[2].split('.')[0])
                 save_data(new_id)
+            counter = counter + 1
+        if counter > 5:
             break
 
 
@@ -89,7 +103,12 @@ def get_preliminary_information(data):
                     if col == 0:
                         detail['name'] = get_text(row_data[col])
                     elif col == 1:
-                        detail['email'] = get_text(row_data[col])
+                        if "mailto" in get_text(row_data[col]):
+                            result = re.search('mailto:(.*)">', get_text(row_data[col]))
+                            if result:
+                                detail['email'] = result.group(1)
+                        else:
+                            detail['email'] = get_text(row_data[col])
                     elif col == 2:
                         phone = get_text(row_data[col]).replace(" ", "").replace(
                             "(", "").replace(")", "").replace("-", "")
@@ -106,9 +125,15 @@ def get_department_information(data):
     if len(data[0]) == 1 and len(data[0][0]) == 1 and "Department name" in data[0][0][0]:
         department_information["department_name"] = get_text(data[1][0])
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Number of partners" in data[0][0][0]:
-        department_information["number_of_partners"] = get_text(data[1][0])
+        if len(data[1][0]) > 2:
+            department_information["number_of_partners"] = len(data[1][0]) - 1
+        else:
+            department_information["number_of_partners"] = get_text(data[1][0])
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "qualified lawyers" in data[0][0][0]:
-        department_information["qualified_lawyers"] = get_text(data[1][0])
+        if len(data[1][0]) > 2:
+            department_information["qualified_lawyers"] = len(data[1][0]) - 1
+        else:
+            department_information["qualified_lawyers"] = get_text(data[1][0])
     elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and "Foreign Desks" in data[0][0][0]:
         if len(data) > 6 and "" in get_text(data[6][0]):
             department_information["department_best_known"] = get_text(
@@ -167,7 +192,7 @@ def get_department_information(data):
                     if col == 0:
                         detail['name'] = get_text(row_data[col])
                     elif col == 1:
-                        detail['comments'] = get_text(row_data[col])
+                        detail['comments'] = get_text(row_data[col]).replace("--\t","\n").replace("  "," ")
                     elif col == 2:
                         detail['is_partner'] = get_text(row_data[col])
                     col = col+1
@@ -186,9 +211,14 @@ def get_department_information(data):
                 detail = {}
                 while col < len(row_data):
                     if col == 0:
-                        detail['name'] = get_text(row_data[col])
+                        if "href" in get_text(row_data[col]):
+                            result = re.search('">(.*)</', get_text(row_data[col]))
+                            if result:
+                                detail['name'] = result.group(1)
+                        else:
+                            detail['name'] = get_text(row_data[col])
                     elif col == 1:
-                        detail['comments'] = get_text(row_data[col])
+                        detail['comments'] = get_text(row_data[col]).replace("--\t","\n").replace("  "," ")
                     elif col == 2:
                         detail['is_partner'] = get_text(row_data[col])
                     col = col+1
@@ -222,7 +252,7 @@ def get_feedback(data):
             row = row+1
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Feedback on our previous coverage of your department" in data[0][0][0]:
         feedback["previous_coverage_department_feedback"] = get_text(
-            data[1][0])
+            data[1][0]).replace("\t","\n").replace("  "," ")
 
 
 def get_publishable_information(data):
@@ -254,7 +284,7 @@ def get_publishable_information(data):
                 if "Name of client" in get_text(row_data[0]):
                     detail['name'] = get_text(data[row+1][0])
                 elif "Summary of matter and your department" in get_text(row_data[0]):
-                    detail['summary'] = get_text(data[row+1][0])
+                    detail['summary'] = get_text(data[row+1][0]).replace(" ", "").replace("--","\n")
                 elif "Matter value" in get_text(row_data[0]):
                     detail['matter_value'] = get_text(data[row+1][0])
                 elif "Is this a cross-border matter" in get_text(row_data[0]):
@@ -333,19 +363,15 @@ def get_text(data):
 
 
 if __name__ == "__main__":
-    # result = docx2python('3362805.docx')
-    # parsing(result)
-    if os.path.exists("data.db") == False:
-        create()
+    # import subprocess
 
-    # result = docx2python('BlockDestination.docx')
-    # parsing(result)
-    # new_id = insert_submission_data(
-    #     "blob_string", "blob_string", "blob_string")
-    # save_data(new_id)
-    azure()
-    # insert_Data("a", 's', 'f')
-    # result = get_Data()
-
-    # for row in result:
-    #     print(row)
+    # subprocess.call(
+    #     ['soffice', '--headless', '--convert-to', 'docx', "3167883.doc"])
+    # result = docx2python('3169276.DOCX')
+    # import pdb
+    # pdb.set_trace()
+    # print(result)
+    # create()
+    #azure()
+    result = docx2python('3161842.docx')
+    parsing(result)
