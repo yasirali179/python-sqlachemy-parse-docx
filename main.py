@@ -23,7 +23,8 @@ def azure():
     blob_list = container.list_blobs()
     counter = 0
     for blob in blob_list:
-        if ".docx" in blob.name and "3164475.docx" in blob.name.split('/')[2]:
+        print(blob.name + '\n')
+        if ".DOC" in blob.name and "3362805.DOC" in blob.name.split('/')[2]:
             #if ".DOCX" in name.upper() or ".DOC" in name.upper():
             print(blob.name + '\n')
             blob_string = blob.name.split('/')
@@ -40,7 +41,7 @@ def azure():
                 #     subprocess.call(
                 #         ['soffice', '--headless', '--convert-to', 'docx', "BlockDestination.docx"])
 
-                result = docx2python('BlockDestination.docx')
+                result = docx2python('3362805.docx')
                 parsing(result)
                 new_id = insert_submission_data(
                     blob_string[0], blob_string[1], blob_string[2].split('.')[0])
@@ -135,9 +136,15 @@ def get_department_information(data):
         else:
             department_information["qualified_lawyers"] = get_text(data[1][0])
     elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and "Foreign Desks" in data[0][0][0]:
-        if len(data) > 6 and "" in get_text(data[6][0]):
-            department_information["department_best_known"] = get_text(
-                data[1][0])
+        length = 0
+        while(length< len(data)):
+            if "department best known" in get_text(data[length][0]):
+                if length+1 < len(data):
+                    department_information["department_best_known"] = get_text(data[length+1][0]).replace("--","").replace("\t","")
+            length = length + 1
+    elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and "department best known" in data[0][0][0]:
+        if len(data[1][0]) > 2:
+            department_information["department_best_known"] = "\n".join(data[1][0]).replace("--","").replace("\t","")
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Heads of department" in data[0][0][0]:
         department_information["heads_of_department_details"] = []
         row = 2
@@ -150,7 +157,12 @@ def get_department_information(data):
                     if col == 0:
                         detail['name'] = get_text(row_data[col])
                     elif col == 1:
-                        detail['email'] = get_text(row_data[col])
+                        if "mailto" in get_text(row_data[col]):
+                            result = re.search('mailto:(.*)">', get_text(row_data[col]))
+                            if result:
+                                detail['email'] = result.group(1)
+                        else:
+                            detail['email'] = get_text(row_data[col])
                     elif col == 2:
                         phone = get_text(row_data[col]).replace(" ", "").replace(
                             "(", "").replace(")", "").replace("-", "")
@@ -371,7 +383,7 @@ if __name__ == "__main__":
     # import pdb
     # pdb.set_trace()
     # print(result)
-    # create()
-    #azure()
-    result = docx2python('3161842.docx')
-    parsing(result)
+    #create()
+    azure()
+    #result = docx2python('3362805.docx')
+    #parsing(result)
