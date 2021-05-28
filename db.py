@@ -61,8 +61,8 @@ hires = Table(
     'hires', meta,
     Column('id', Integer, primary_key=True),
     Column('name', String),
-    Column('joined', String),
-    Column('joined_from', String),
+    Column('joined_departed', String),
+    Column('joined_from_destination_firm', String),
     Column('department_information_id', Integer,
            ForeignKey('department_information.id')),
 )
@@ -89,7 +89,7 @@ unranked_lawyers_information = Table(
 feedback = Table(
     'feedback', meta,
     Column('id', Integer, primary_key=True),
-    Column('provious_coverage_feedback', String),
+    Column('previous_coverage_feedback', String),
     Column('submission_data_id', Integer,
            ForeignKey('submission_data.id')),
 )
@@ -194,15 +194,15 @@ def insert_submission_data(publication_id, subsection_id, submissions_id):
 
 
 def insert_preliminary_information(submission_data_id, data):
-    insert = preliminary_information.insert().values(firm_name=data['frim_name'] if "frim_name" in data else None,
+    insert = preliminary_information.insert().values(firm_name=data['firm_name'] if "firm_name" in data else None,
                                                      practice_area=data['practice_area'] if "practice_area" in data else None,
-                                                     location_jurisdiction=data['localtion'] if "localtion" in data else None,
+                                                     location_jurisdiction=data['location'] if "location" in data else None,
                                                      submission_data_id=submission_data_id
                                                      )
     conn = engine.connect()
     result = conn.execute(insert)
     id = result.inserted_primary_key[0]
-    for person in data["contact_person_details"]:
+    for person in data.get("contact_person_details",[]):
         detailed = contact_person_arrange_interviews.insert().values(
             name=person['name'] if "name" in person else None,
             email=person['email'] if "email" in person else None,
@@ -215,17 +215,17 @@ def insert_preliminary_information(submission_data_id, data):
 
 def insert_department_information(submission_data_id, data):
     insert = department_information.insert().values(department_name=data['department_name'] if "department_name" in data else None,
-                                                    number_of_partners=int(
-                                                        data['number_of_partners']) if "number_of_partners" in data else None,
-                                                    qualified_lawyers=int(
-                                                        data['qualified_lawyers']) if "qualified_lawyers" in data else None,
+                                                    number_of_partners=to_int(
+                                                        data['number_of_partners']) if "number_of_partners" in data and data['number_of_partners'] != '' else None,
+                                                    qualified_lawyers=to_int(
+                                                        data['qualified_lawyers']) if "qualified_lawyers" in data and data['qualified_lawyers'] != '' else None,
                                                     department_best_known_for=data['department_best_known'] if "department_best_known" in data else None,
                                                     submission_data_id=submission_data_id
                                                     )
     conn = engine.connect()
     result = conn.execute(insert)
     id = result.inserted_primary_key[0]
-    for person in data["heads_of_department_details"]:
+    for person in data.get("heads_of_department_details", []):
         detailed = heads_of_department.insert().values(
             name=person['name']if "name" in person else None,
             email=person['email']if "email" in person else None,
@@ -235,17 +235,17 @@ def insert_department_information(submission_data_id, data):
         conn = engine.connect()
         result = conn.execute(detailed)
 
-    for person in data["hires_details"]:
+    for person in data.get("hires_details",[]):
         detailed = hires.insert().values(
             name=person['name']if "name" in person else None,
-            joined=person['joined']if "joined" in person else None,
-            joined_from=person['joined_from']if "joined_from" in person else None,
+            joined_departed=person['joined']if "joined" in person else None,
+            joined_from_destination_firm=person['joined_from']if "joined_from" in person else None,
             department_information_id=id
         )
         conn = engine.connect()
         result = conn.execute(detailed)
 
-    for person in data["ranked_lawyers_details"]:
+    for person in data.get("ranked_lawyers_details", []):
         detailed = ranked_lawyers_information.insert().values(
             name=person['name']if "name" in person else None,
             comment=person['comments']if "comments" in person else None,
@@ -255,7 +255,7 @@ def insert_department_information(submission_data_id, data):
         conn = engine.connect()
         result = conn.execute(detailed)
 
-    for person in data["unranked_lawyers_details"]:
+    for person in data.get("unranked_lawyers_details",[]):
         detailed = unranked_lawyers_information.insert().values(
             name=person['name']if "name" in person else None,
             comment=person['comments']if "comments" in person else None,
@@ -271,21 +271,22 @@ def insert_feedback(submission_data_id, data):
         previous_coverage_department_feedback = data['previous_coverage_department_feedback']
     else:
         previous_coverage_department_feedback = ''
-    insert = feedback.insert().values(provious_coverage_feedback=previous_coverage_department_feedback,
+    insert = feedback.insert().values(previous_coverage_feedback=previous_coverage_department_feedback,
                                       submission_data_id=submission_data_id
                                       )
     conn = engine.connect()
     result = conn.execute(insert)
     id = result.inserted_primary_key[0]
-    for person in data["barristers_advocates_selected_country_details"]:
-        detailed = barristers_advocates_info.insert().values(
-            name=person['name']if "name" in person else None,
-            firm=person['firm']if "firm" in person else None,
-            comments=person['comments']if "comments" in person else None,
-            feedback_id=id
-        )
-        conn = engine.connect()
-        result = conn.execute(detailed)
+    if 'barristers_advocates_selected_country_details' in data:
+        for person in data["barristers_advocates_selected_country_details"]:
+            detailed = barristers_advocates_info.insert().values(
+                name=person['name']if "name" in person else None,
+                firm=person['firm']if "firm" in person else None,
+                comments=person['comments']if "comments" in person else None,
+                feedback_id=id
+            )
+            conn = engine.connect()
+            result = conn.execute(detailed)
 
 
 def insert_publishable_information(submission_data_id, data):
@@ -295,7 +296,7 @@ def insert_publishable_information(submission_data_id, data):
     result = conn.execute(insert)
     id = result.inserted_primary_key[0]
 
-    for person in data["publishable_clients_details"]:
+    for person in data.get("publishable_clients_details", []):
 
         insert = publishable_clients.insert().values(
             name=person['name'] if "name" in person else None,
@@ -304,7 +305,7 @@ def insert_publishable_information(submission_data_id, data):
         conn = engine.connect()
         result = conn.execute(insert)
 
-    for matter in data["publishable_matters"]:
+    for matter in data.get("publishable_matters", []):
         insert = publishable_matters.insert().values(
             name=matter['name'] if "name" in matter else None,
             summary=matter['summary'] if "summary" in matter else None,
@@ -328,7 +329,7 @@ def insert_confidential_information(submission_data_id, data):
     result = conn.execute(insert)
     id = result.inserted_primary_key[0]
 
-    for person in data["confidential_clients_details"]:
+    for person in data.get("confidential_clients_details",[]):
         insert = confidential_clients.insert().values(
             name=person['name'] if "name" in person else None,
             new_client=person['is_new_client'] if "is_new_client" in person else None,
@@ -336,7 +337,7 @@ def insert_confidential_information(submission_data_id, data):
         conn = engine.connect()
         result = conn.execute(insert)
 
-    for matter in data["confidential_matters"]:
+    for matter in data.get("confidential_matters",[]):
         insert = confidential_matters.insert().values(
             name=matter['name'] if "name" in matter else None,
             summary=matter['summary'] if "summary" in matter else None,
@@ -353,19 +354,12 @@ def insert_confidential_information(submission_data_id, data):
         result = conn.execute(insert)
 
 
-# def get_Data():
-#     s = submission_data.select()
-#     conn = engine.connect()
-#     result = conn.execute(s)
-#     return result
+def to_int(str):
+    try:
+        return int(str)
+    except:
+        return None
 
 
-# def add_PreliminaryInformation():
-#     ins = submission_data.insert().values(publication_id=publication_id,
-#                                subsection_id=subsection_id, submissions_id=submissions_id)
-#     conn = engine.connect()
-#     result = conn.execute(ins)
-
-
-def create():
+def create_database():
     meta.create_all(engine)

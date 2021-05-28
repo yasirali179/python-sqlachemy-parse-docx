@@ -1,7 +1,7 @@
 import os
 import subprocess
 import re
-from db import create, insert_submission_data, insert_preliminary_information, insert_department_information, insert_feedback, insert_publishable_information, insert_confidential_information, check_db
+from db import create_database, insert_submission_data, insert_preliminary_information, insert_department_information, insert_feedback, insert_publishable_information, insert_confidential_information, check_db
 from docx2python import docx2python
 from azure.storage.blob import ContainerClient
 
@@ -21,37 +21,50 @@ def azure():
         connection_string, container_name=container_name)
     # Get list of the blob
     blob_list = container.list_blobs()
-    counter = 0
+    # parsing of all the blobs
     for blob in blob_list:
         print(blob.name + '\n')
-        if ".DOC" in blob.name and "3362805.DOC" in blob.name.split('/')[2]:
-            #if ".DOCX" in name.upper() or ".DOC" in name.upper():
-            print(blob.name + '\n')
+        if ".DOC" in blob.name.upper():
+            # get blob string and split it into its subsections
             blob_string = blob.name.split('/')
+            # check if it exists in Database before
             id = check_db(
                 blob_string[0], blob_string[1], blob_string[2].split('.')[0])
+            # If not existed in database
             if id is None:
+                # Download blob data
                 blob_data = container.download_blob(blob)
-                if os.path.exists("BlockDestination.docx"):
-                    os.remove("BlockDestination.docx")
-                with open("./BlockDestination.docx", "wb") as my_blob:
-                    blob_data.readinto(my_blob)
 
-                # if ".DOC" in name.upper():
-                #     subprocess.call(
-                #         ['soffice', '--headless', '--convert-to', 'docx', "BlockDestination.docx"])
+                if os.path.exists("files/BlockDestination.docx"):
+                    os.remove("files/BlockDestination.docx")
 
-                result = docx2python('3362805.docx')
-                parsing(result)
-                new_id = insert_submission_data(
-                    blob_string[0], blob_string[1], blob_string[2].split('.')[0])
-                save_data(new_id)
-            counter = counter + 1
-        if counter > 5:
-            break
+                # convert to .docx if file in old word file .doc
+                if not ".DOCX" in blob_string[2].upper():
+                    if os.path.exists("files/BlockDestination.doc"):
+                        os.remove("files/BlockDestination.doc")
+
+                    with open("./files/BlockDestination.doc", "wb") as my_blob:
+                        blob_data.readinto(my_blob)
+                    subprocess.call(
+                        ['soffice', '--headless', '--convert-to', 'docx', "files/BlockDestination.doc", "--outdir", "./files/"])
+                else:
+                    with open("./files/BlockDestination.docx", "wb") as my_blob:
+                        blob_data.readinto(my_blob)
+                result = None
+                try:
+                    result = docx2python('files/BlockDestination.docx')
+                except:
+                    pass
+                if result:
+                    parsing(result)
+                    new_id = insert_submission_data(
+                        blob_string[0], blob_string[1], blob_string[2].split('.')[0])
+                    save_data_into_db(new_id)
 
 
-def save_data(id):
+
+
+def save_data_into_db(id):
     global preliminary_information, department_information, feedback, publishable_information, confidential_information
     insert_preliminary_information(
         int(id), preliminary_information)
@@ -84,15 +97,26 @@ def parsing(result):
         i = i+1
 
 
+def extract_single_value(data, key):
+    if len(data[0]) == 1 and len(data[0][0]) == 1 and key in data[0][0][0]:
+        return data[1][0]
+    else:
+        return ''
+
+
 def get_preliminary_information(data):
     global preliminary_information
+    # preliminary_information["firm_name"] = get_text(extract_single_value(data, "Firm name"))
+    # preliminary_information["practice_area"] = get_text(extract_single_value(data, "Practice Area"))
+    # preliminary_information["location"] = get_text(extract_single_value(data, "Location"))
+
     if len(data[0]) == 1 and len(data[0][0]) == 1 and "Firm name" in data[0][0][0]:
-        preliminary_information["frim_name"] = get_text(data[1][0])
+        preliminary_information["firm_name"] = get_text(data[1][0])
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Practice Area" in data[0][0][0]:
         preliminary_information["practice_area"] = get_text(data[1][0])
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Location" in data[0][0][0]:
-        preliminary_information["localtion"] = get_text(data[1][0])
-    elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Contact person" in data[0][0][0]:
+        preliminary_information["location"] = get_text(data[1][0])
+    if len(data[0]) == 1 and len(data[0][0]) == 1 and "Contact person" in data[0][0][0]:
         preliminary_information["contact_person_details"] = []
         row = 2
         while row < len(data):
@@ -102,7 +126,7 @@ def get_preliminary_information(data):
                 detail = {}
                 while col < len(row_data):
                     if col == 0:
-                        detail['name'] = get_text(row_data[col])
+                        detail['name'] = "\n".join(row_data[col])
                     elif col == 1:
                         if "mailto" in get_text(row_data[col]):
                             result = re.search('mailto:(.*)">', get_text(row_data[col]))
@@ -113,6 +137,9 @@ def get_preliminary_information(data):
                     elif col == 2:
                         phone = get_text(row_data[col]).replace(" ", "").replace(
                             "(", "").replace(")", "").replace("-", "")
+                        # if len(phone) > 0 and phone[0] != '+':
+                        #     detail['phone'] = '+' + phone
+                        # else:
                         detail['phone'] = phone
                     col = col+1
                 if len(detail) != 0:
@@ -123,6 +150,23 @@ def get_preliminary_information(data):
 
 def get_department_information(data):
     global department_information
+    # department_information["department_name"] =get_text(extract_single_value(data, "Department name"))
+    # number_of_partners_data = get_text(extract_single_value(data, "Number of partners"))
+    # if len(number_of_partners_data) > 2:
+    #     department_information["number_of_partners"] = len(number_of_partners_data) -1
+    # else:
+    #     department_information["number_of_partners"] = get_text(number_of_partners_data)
+    # 
+    # qualified_lawyers_data = get_text(extract_single_value(data, "qualified lawyers"))
+    # if len(qualified_lawyers_data) > 2:
+    #     department_information["qualified_lawyers"] = len(qualified_lawyers_data) - 1
+    # else:
+    #     department_information["qualified_lawyers"] = get_text(qualified_lawyers_data)
+    
+    
+
+
+
     if len(data[0]) == 1 and len(data[0][0]) == 1 and "Department name" in data[0][0][0]:
         department_information["department_name"] = get_text(data[1][0])
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Number of partners" in data[0][0][0]:
@@ -140,11 +184,14 @@ def get_department_information(data):
         while(length< len(data)):
             if "department best known" in get_text(data[length][0]):
                 if length+1 < len(data):
-                    department_information["department_best_known"] = get_text(data[length+1][0]).replace("--","").replace("\t","")
+                    extracted_data = "\n".join(data[length + 1][0]).replace("--", "\u2022").replace("\t", "")
+                    department_information["department_best_known"] = extracted_data
+                    break;
             length = length + 1
     elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and "department best known" in data[0][0][0]:
         if len(data[1][0]) > 2:
-            department_information["department_best_known"] = "\n".join(data[1][0]).replace("--","").replace("\t","")
+            extracted_data = "\n".join(data[1][0]).replace("--", "\u2022").replace("\t", "")
+            department_information["department_best_known"] = extracted_data
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Heads of department" in data[0][0][0]:
         department_information["heads_of_department_details"] = []
         row = 2
@@ -155,7 +202,12 @@ def get_department_information(data):
                 detail = {}
                 while col < len(row_data):
                     if col == 0:
-                        detail['name'] = get_text(row_data[col])
+                        if "mailto" in get_text(row_data[col]):
+                            result = re.search('mailto:(.*)">', get_text(row_data[col]))
+                            if result:
+                                detail['name'] = result.group(1)
+                        else:
+                            detail['name'] = "\n".join(row_data[col])
                     elif col == 1:
                         if "mailto" in get_text(row_data[col]):
                             result = re.search('mailto:(.*)">', get_text(row_data[col]))
@@ -182,7 +234,7 @@ def get_department_information(data):
                 detail = {}
                 while col < len(row_data):
                     if col == 0:
-                        detail['name'] = get_text(row_data[col])
+                        detail['name'] = "\n".join(row_data[col])
                     elif col == 1:
                         detail['joined'] = get_text(row_data[col])
                     elif col == 2:
@@ -202,9 +254,15 @@ def get_department_information(data):
                 detail = {}
                 while col < len(row_data):
                     if col == 0:
-                        detail['name'] = get_text(row_data[col])
+                        if "href" in get_text(row_data[col]):
+                            result = re.search('">(.*)</', get_text(row_data[col]))
+                            if result:
+                                detail['name'] = result.group(1).replace(" ", "")
+                        else:
+                            detail['name'] = "\n".join(row_data[col]).replace(" ", "")
                     elif col == 1:
-                        detail['comments'] = get_text(row_data[col]).replace("--\t","\n").replace("  "," ")
+                        detail['comments'] = "\n".join(row_data[col]).replace("--","\u2022").replace("  ", " ").\
+                            replace("\t", "")
                     elif col == 2:
                         detail['is_partner'] = get_text(row_data[col])
                     col = col+1
@@ -226,11 +284,12 @@ def get_department_information(data):
                         if "href" in get_text(row_data[col]):
                             result = re.search('">(.*)</', get_text(row_data[col]))
                             if result:
-                                detail['name'] = result.group(1)
+                                detail['name'] = result.group(1).replace(" ", "")
                         else:
-                            detail['name'] = get_text(row_data[col])
+                            detail['name'] = "\n".join(row_data[col]).replace(" ", "")
                     elif col == 1:
-                        detail['comments'] = get_text(row_data[col]).replace("--\t","\n").replace("  "," ")
+                        detail['comments'] = "\n".join(row_data[col]).replace("--", "\u2022").replace("  ", " "). \
+                            replace("\t", "")
                     elif col == 2:
                         detail['is_partner'] = get_text(row_data[col])
                     col = col+1
@@ -263,8 +322,7 @@ def get_feedback(data):
                         detail)
             row = row+1
     elif len(data[0]) == 1 and len(data[0][0]) == 1 and "Feedback on our previous coverage of your department" in data[0][0][0]:
-        feedback["previous_coverage_department_feedback"] = get_text(
-            data[1][0]).replace("\t","\n").replace("  "," ")
+        feedback["previous_coverage_department_feedback"] = "\n".join(data[1][0]).replace("\t","").replace("  "," ").replace("\n\n", "").replace("--", "\u2022")
 
 
 def get_publishable_information(data):
@@ -290,13 +348,14 @@ def get_publishable_information(data):
     elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and (("Publishable Work Highlights in last 12 months" in data[0][0][0] and "Publishable Matter" in data[1][0][0]) or ("Publishable Matter" in data[0][0][0])):
         row = 0
         detail = {}
-        while row < len(data):
+        while row < len(data)- 1:
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0 and "N/A" not in get_text(row_data[0]):
+            if len(row_data) > 0 and len(row_data) > 0 and len(get_text(row_data[0])) > 0 and "N/A" not in get_text(row_data[0]) and len(data[row+1]) > 0:
                 if "Name of client" in get_text(row_data[0]):
                     detail['name'] = get_text(data[row+1][0])
                 elif "Summary of matter and your department" in get_text(row_data[0]):
-                    detail['summary'] = get_text(data[row+1][0]).replace(" ", "").replace("--","\n")
+                    extracted_data = "\n".join(data[row+1][0]).replace("--", "\u2022").replace("\t", "").replace(" ", "")
+                    detail['summary'] = extracted_data
                 elif "Matter value" in get_text(row_data[0]):
                     detail['matter_value'] = get_text(data[row+1][0])
                 elif "Is this a cross-border matter" in get_text(row_data[0]):
@@ -310,9 +369,9 @@ def get_publishable_information(data):
                 elif "Date of completion or current status" in get_text(row_data[0]):
                     detail['date_of_completion'] = get_text(data[row+1][0])
                 elif "Other information about this matter" in get_text(row_data[0]):
-                    detail['other_information'] = get_text(data[row+1][0])
+                    detail['other_information'] = "\n".join(data[row+1][0])
             row = row+1
-        if len(detail) > 0:
+        if len(detail) > 0 and 'name' in detail and len(detail['name']) > 0:
             publishable_information["publishable_matters"].append(detail)
 
 
@@ -339,13 +398,14 @@ def get_confidential_information(data):
     elif len(data[0]) >= 1 and len(data[0][0]) >= 1 and (("Confidential Work Highlights" in data[0][0][0] and "Confidential Matter" in data[1][0][0]) or ("Confidential Matter" in data[0][0][0])):
         detail = {}
         row = 0
-        while row < len(data):
+        while row < len(data) - 1:
             row_data = data[row]
-            if len(get_text(row_data[0])) > 0 and "N/A" not in get_text(row_data[0]):
+            if len(row_data) > 0 and len(get_text(row_data[0])) > 0 and "N/A" not in get_text(row_data[0]) and len(data[row+1]) > 0:
                 if "Name of client" in get_text(row_data[0]):
                     detail['name'] = get_text(data[row+1][0])
                 elif "Summary of matter and your department" in get_text(row_data[0]):
-                    detail['summary'] = get_text(data[row+1][0])
+                    extracted_data = "\n".join(data[row + 1][0]).replace("--", "\u2022").replace("\t", "").replace(" ", "")
+                    detail['summary'] = extracted_data
                 elif "Matter value" in get_text(row_data[0]):
                     detail['matter_value'] = get_text(data[row+1][0])
                 elif "Is this a cross-border matter" in get_text(row_data[0]):
@@ -359,9 +419,9 @@ def get_confidential_information(data):
                 elif "Date of completion or current status" in get_text(row_data[0]):
                     detail['date_of_completion'] = get_text(data[row+1][0])
                 elif "Other information about this matter" in get_text(row_data[0]):
-                    detail['other_information'] = get_text(data[row+1][0])
+                    detail['other_information'] = "\n".join(data[row+1][0])
             row = row+1
-        if len(detail) > 0:
+        if len(detail) > 0 and 'name' in detail and len(detail['name']) > 0:
             confidential_information["confidential_matters"].append(detail)
 
 
@@ -383,7 +443,12 @@ if __name__ == "__main__":
     # import pdb
     # pdb.set_trace()
     # print(result)
-    #create()
+    create_database()
+    # result = docx2python('3161842.docx')
+    # parsing(result)
+    # new_id = insert_submission_data(
+    #     '335', '489302', '3161842')
+    # save_data(new_id)
     azure()
-    #result = docx2python('3362805.docx')
+    #result = docx2python('3169190.docx')
     #parsing(result)
