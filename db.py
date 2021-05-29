@@ -40,8 +40,8 @@ department_information = Table(
     'department_information', meta,
     Column('id', Integer, primary_key=True),
     Column('department_name', String),
-    Column('number_of_partners', Integer),
-    Column('qualified_lawyers', Integer),
+    Column('number_of_partners', String),
+    Column('qualified_lawyers', String),
     Column('male_ratio', Float),
     Column('female_ratio', Float),
     Column('department_best_known_for', String),
@@ -218,10 +218,10 @@ def insert_preliminary_information(submission_data_id, data):
 def insert_department_information(submission_data_id, data):
     if len(data) > 0:
         insert = department_information.insert().values(department_name=data['department_name'] if "department_name" in data else None,
-                                                        number_of_partners=to_int(
-                                                            data['number_of_partners']) if "number_of_partners" in data and data['number_of_partners'] != '' else None,
-                                                        qualified_lawyers=to_int(
-                                                            data['qualified_lawyers']) if "qualified_lawyers" in data and data['qualified_lawyers'] != '' else None,
+                                                        number_of_partners=
+                                                            data['number_of_partners'] if "number_of_partners" in data and data['number_of_partners'] != '' else None,
+                                                        qualified_lawyers=
+                                                            data['qualified_lawyers'] if "qualified_lawyers" in data and data['qualified_lawyers'] != '' else None,
                                                         department_best_known_for=data['department_best_known'] if "department_best_known" in data else None,
                                                         submission_data_id=submission_data_id
                                                         )

@@ -12,7 +12,9 @@ department_information = {}
 feedback = {}
 publishable_information = {'publishable_matters': []}
 confidential_information = {'confidential_matters': []}
-connection_string = "DefaultEndpointsProtocol=https;AccountName=sthistoricalsubmissions;AccountKey=5OlZ+H0GndSzvBf13VfUTXAfdQOKJ1lsWBcp+h8Zst17ks44aBu1skOdOLUOlTisdMy7hEQlwyjzvjpSOeFxfw==;EndpointSuffix=core.windows.net"
+connection_string = "DefaultEndpointsProtocol=https;AccountName=sthistoricalsubmissions;AccountKey=5OlZ+H" \
+                    "0GndSzvBf13VfUTXAfdQOKJ1lsWBcp+h8Zst17ks44aBu1skOdOLUOlTisdMy7hEQlwyjzvjpSOeFxfw==;" \
+                    "EndpointSuffix=core.windows.net"
 container_name = "submissions"
 
 
@@ -36,44 +38,61 @@ def azure():
             if id is None:
                 # Download blob data
                 blob_data = container.download_blob(blob)
-
+                # Check if previous file exists for prevention of overwrite
                 if os.path.exists("files/BlockDestination.docx"):
                     os.remove("files/BlockDestination.docx")
 
                 # convert to .docx if file in old word file .doc
-                if not ".DOCX" in blob_string[2].upper():
+                if ".DOCX" not in blob_string[2].upper():
                     if os.path.exists("files/BlockDestination.doc"):
                         os.remove("files/BlockDestination.doc")
-
+                    # save .doc downloaded file
                     with open("./files/BlockDestination.doc", "wb") as my_blob:
                         blob_data.readinto(my_blob)
+                    # convert old .doc into .docx for parsing
                     subprocess.call(
                         ['soffice', '--headless', '--convert-to', 'docx', "files/BlockDestination.doc", "--outdir",
                          "./files/"])
                 else:
+                    # Save .docx file for parsing
                     with open("./files/BlockDestination.docx", "wb") as my_blob:
                         blob_data.readinto(my_blob)
                 result = None
                 try:
+                    # Parse the file and return parsed data
                     result = docx2python('files/BlockDestination.docx')
                 except:
                     pass
+                # CHeck if successfully parsed the data
                 if result:
+                    # extract the relevant data from parsed result
                     parsing(result)
+                    # store the parsed data into Database
                     new_id = insert_submission_data(
                         blob_string[0], blob_string[1], blob_string[2].split('.')[0])
                     save_data_into_db(new_id)
 
 
 def save_data_into_db(id):
+    # get global variables which have parsed data
     global preliminary_information, department_information, feedback, publishable_information, confidential_information
+
+    # insert preliminary information into database
     insert_preliminary_information(
         int(id), preliminary_information)
+
+    # insert department information into database
     insert_department_information(
         int(id), department_information)
+
+    # insert feedback into database
     insert_feedback(int(id), feedback)
+
+    # insert publishable information into database
     insert_publishable_information(
         int(id), publishable_information)
+
+    # insert confidential information into database
     insert_confidential_information(
         int(id), confidential_information)
 
@@ -86,43 +105,76 @@ def save_data_into_db(id):
 
 
 def parsing(result):
+    """ This function takes the parsed object and extract the all the
+        relevant information from the object and store it into global
+        variables
+
+        input: parsed object
+        return: nothing
+        """
     i = 0
+    # external loop for checking each object in the parsed object list
     while i < len(result.body):
+        # check if parsed object list is valid
         if len(result.body[i]) >= 2:
+            # get body data
             data = result.body[i]
+            # extract preliminary information and store into global variables
             get_preliminary_information(data)
+
+            # extract department information and store into global variables
             get_department_information(data)
+
+            # extract feedback and store into global variables
             get_feedback(data)
+
+            # extract publishable information and store into global variables
             get_publishable_information(data)
+
+            # extract confidential information and store into global variables
             get_confidential_information(data)
         i = i + 1
 
 
-def extract_single_value(data, key):
-    if len(data[0]) == 1 and len(data[0][0]) == 1 and key in data[0][0][0]:
-        return data[1][0]
-    else:
-        return ''
-
-
 def get_preliminary_information(data):
+    """ This function takes the parsed object and extract the relevant
+        preliminary information from the object and store it into global
+        preliminary_information variable
+
+        input: parsed object
+        return: nothing
+        """
+
     global preliminary_information
+    # check if object contain "Firm name" keyword if exists store its value into preliminary_information object
     if match_substring_recursive("Firm name", data) and subarray_exist(data, [1, 0]):
         preliminary_information["firm_name"] = get_text(data[1][0])
-    elif match_substring_recursive("A2 Practice Area", data) and subarray_exist(data, [1, 0]):
+
+    # check if object contain "Practice Area" keyword if exists store its value into preliminary_information object
+    elif match_substring_recursive("Practice Area", data) and subarray_exist(data, [1, 0]):
         preliminary_information["practice_area"] = get_text(data[1][0])
-    elif match_substring_recursive("A3 Location", data) and subarray_exist(data, [1, 0]):
+
+    # check if object contain "A3 Location" or "Guide & location" keyword if exists store its value into
+    # preliminary_information object
+    elif (match_substring_recursive("A3 Location", data) or match_substring_recursive("Guide & location",
+                                                                                      data)) and subarray_exist(data,
+                                                                                                                [1, 0]):
         preliminary_information["location"] = get_text(data[1][0])
+
+    # check if object contain "Contact person" keyword
     if match_substring_recursive("Contact person", data) and subarray_exist(data, [2]):
         preliminary_information["contact_person_details"] = []
         row = 2
+        # extract the "Contact person" store its value into preliminary_information object
         while row < len(data):
             row_data = data[row]
+            # check if array is not empty or contain n/a value
             if subarray_exist(data, [0]) and len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
                 while col < len(row_data):
                     if col == 0:
+                        # check if name value have href string if exists remove the href form it
                         if match_substring_recursive("href", row_data[col]):
                             result = re.search('">(.*)</a>', get_text(row_data[col]))
                             if result:
@@ -131,6 +183,7 @@ def get_preliminary_information(data):
                         else:
                             detail['name'] = "\n".join(row_data[col])
                     elif col == 1:
+                        # check if email value have mailto string if exists remove the mailto form it
                         if match_substring_recursive("mailto", row_data[col]):
                             result = re.search('mailto:(.*)">', get_text(row_data[col]))
                             if result:
@@ -138,17 +191,28 @@ def get_preliminary_information(data):
                         else:
                             detail['email'] = get_text(row_data[col])
                     elif col == 2:
+                        # extract phone number of "Contact person" and remove irrelevant information
                         phone = get_text(row_data[col]).replace(" ", "").replace(
                             "(", "").replace(")", "").replace("-", "")
                         detail['phone'] = phone
                     col = col + 1
+                # check if "Contact person" detail is not empty
                 if len(detail) != 0:
+                    # append single Contact into preliminary information object
                     preliminary_information["contact_person_details"].append(
                         detail)
             row = row + 1
 
 
 def get_department_information(data):
+    """ This function takes the parsed object and extract the relevant
+        preliminary information from the object and store it into global
+        preliminary_information variable
+
+        input: parsed object
+        return: nothing
+        """
+
     global department_information
 
     if match_substring_recursive("Department name", data) and subarray_exist(data, [1, 0]):
@@ -165,12 +229,12 @@ def get_department_information(data):
             department_information["qualified_lawyers"] = get_text(data[1][0])
     if match_substring_recursive("Foreign Desks", data) and match_substring_recursive("department best known", data):
         length = 0
-        while (length < len(data)):
+        while length < len(data):
             if "department best known" in get_text(data[length][0]):
                 if length + 1 < len(data):
                     extracted_data = "\n".join(data[length + 1][0]).replace("--", "\u2022").replace("\t", "")
                     department_information["department_best_known"] = extracted_data
-                    break;
+                    break
             length = length + 1
     if match_substring_recursive("department best known", data) and subarray_exist(data, [1, 0]):
         if len(data[1][0]) > 2:
@@ -183,7 +247,7 @@ def get_department_information(data):
         while row < len(data):
             row_data = data[row]
             if len(row_data) == 1:
-                break;
+                break
             if subarray_exist(row_data, [0]) and len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
@@ -221,8 +285,9 @@ def get_department_information(data):
         while row < len(data):
             row_data = data[row]
             if len(row_data) == 1:
-                break;
-            if subarray_exist(row_data, [0]) and len(get_text(row_data[0]).replace(" ","")) > 0 and "N/A" != get_text(row_data[0]).upper():
+                break
+            if subarray_exist(row_data, [0]) and len(get_text(row_data[0]).replace(" ", "")) > 0 and "N/A" != get_text(
+                    row_data[0]).upper():
                 col = 0
                 detail = {}
                 while col < len(row_data):
@@ -236,15 +301,17 @@ def get_department_information(data):
                 if len(detail) != 0:
                     department_information["hires_details"].append(detail)
             row = row + 1
-    if match_substring_recursive("Information regarding lawyers (including associates) RANKED", data) and match_substring_recursive("Partner Y/N", data):
+    if match_substring_recursive("Information regarding lawyers (including associates) RANKED",
+                                 data) and match_substring_recursive("Partner Y/N", data):
         department_information["ranked_lawyers_details"] = []
         row = 2 + find_index_sub_string("Information regarding lawyers (including associates) RANKED", data)[0]
         while row < len(data):
 
             row_data = data[row]
             if len(row_data) == 1:
-                break;
-            if subarray_exist(row_data, [0]) and len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]).upper():
+                break
+            if subarray_exist(row_data, [0]) and len(get_text(row_data[0])) > 0 and "N/A" != get_text(
+                    row_data[0]).upper():
                 col = 0
                 detail = {}
                 while col < len(row_data):
@@ -271,7 +338,7 @@ def get_department_information(data):
         while row < len(data):
             row_data = data[row]
             if len(row_data) == 1:
-                break;
+                break
             if subarray_exist(row_data, [0]) and len(get_text(row_data[0])) > 0 and "N/A" != get_text(row_data[0]):
                 col = 0
                 detail = {}
@@ -296,7 +363,16 @@ def get_department_information(data):
 
 
 def get_feedback(data):
+    """ This function takes the parsed object and extract the relevant
+        preliminary information from the object and store it into global
+        preliminary_information variable
+
+        input: parsed object
+        return: nothing
+        """
+
     global feedback
+
     if match_substring_recursive(
             "barristers / advocates in the UK, Australia, Hong Kong, India, Malaysia, New Zealand or Sri Lanka", data):
         feedback["barristers_advocates_selected_country_details"] = []
@@ -319,14 +395,22 @@ def get_feedback(data):
                         detail)
             row = row + 1
     elif match_substring_recursive("Feedback on our previous coverage of your department", data):
-        if subarray_exist(data, [1,0]):
-            data = "\n".join(data[1][0]).replace("\t", "").replace("  "," ").replace("\n\n", "").\
+        if subarray_exist(data, [1, 0]):
+            data = "\n".join(data[1][0]).replace("\t", "").replace("  ", " ").replace("\n\n", ""). \
                 replace("--", "\u2022")
             if len(data) > 0:
                 feedback["previous_coverage_department_feedback"] = data
 
 
 def get_publishable_information(data):
+    """ This function takes the parsed object and extract the relevant
+        preliminary information from the object and store it into global
+        preliminary_information variable
+
+        input: parsed object
+        return: nothing
+        """
+
     global publishable_information
     if match_substring_recursive("List of this department's PUBLISHABLE clients", data):
         publishable_information["publishable_clients_details"] = []
@@ -334,7 +418,7 @@ def get_publishable_information(data):
         while row < len(data):
             row_data = data[row]
             if subarray_exist(row_data, [1]) and subarray_exist(row_data, [1]) and len(
-                    get_text(row_data[1]).replace(" ","")) > 0 and "N/A" != get_text(row_data[0]).upper():
+                    get_text(row_data[1]).replace(" ", "")) > 0 and "N/A" != get_text(row_data[0]).upper():
                 col = 1
                 detail = {}
                 while col < len(row_data):
@@ -385,14 +469,22 @@ def get_publishable_information(data):
 
 
 def get_confidential_information(data):
+    """ This function takes the parsed object and extract the relevant
+        preliminary information from the object and store it into global
+        preliminary_information variable
+
+        input: parsed object
+        return: nothing
+        """
+
     global confidential_information
     if match_substring_recursive("List of this department's CONFIDENTIAL clients", data):
         confidential_information["confidential_clients_details"] = []
         row = 2
         while row < len(data):
             row_data = data[row]
-            if  subarray_exist(row_data, [1]) and subarray_exist(row_data, [1]) and len(
-                    get_text(row_data[1]).replace(" ","")) > 0 and "N/A" != get_text(row_data[0]).upper():
+            if subarray_exist(row_data, [1]) and subarray_exist(row_data, [1]) and len(
+                    get_text(row_data[1]).replace(" ", "")) > 0 and "N/A" != get_text(row_data[0]).upper():
                 detail = {}
                 col = 1
                 while col < len(row_data):
