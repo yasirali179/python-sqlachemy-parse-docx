@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, Float, Boolean, and_
+from utils import to_int
 meta = MetaData()
 
 #engine = create_engine('postgresql://chambersadmin@historical-submissions-db:!:&<G9n5Jc?L@historical-submissions-db.postgres.database.azure.com:5432/postgres', echo=True)
@@ -194,14 +195,15 @@ def insert_submission_data(publication_id, subsection_id, submissions_id):
 
 
 def insert_preliminary_information(submission_data_id, data):
-    insert = preliminary_information.insert().values(firm_name=data['firm_name'] if "firm_name" in data else None,
-                                                     practice_area=data['practice_area'] if "practice_area" in data else None,
-                                                     location_jurisdiction=data['location'] if "location" in data else None,
-                                                     submission_data_id=submission_data_id
-                                                     )
-    conn = engine.connect()
-    result = conn.execute(insert)
-    id = result.inserted_primary_key[0]
+    if 'firm_name' in data or 'practice_area' in data or 'location' in data:
+        insert = preliminary_information.insert().values(firm_name=data['firm_name'] if "firm_name" in data else None,
+                                                         practice_area=data['practice_area'] if "practice_area" in data else None,
+                                                         location_jurisdiction=data['location'] if "location" in data else None,
+                                                         submission_data_id=submission_data_id
+                                                         )
+        conn = engine.connect()
+        result = conn.execute(insert)
+        id = result.inserted_primary_key[0]
     for person in data.get("contact_person_details",[]):
         detailed = contact_person_arrange_interviews.insert().values(
             name=person['name'] if "name" in person else None,
@@ -214,17 +216,18 @@ def insert_preliminary_information(submission_data_id, data):
 
 
 def insert_department_information(submission_data_id, data):
-    insert = department_information.insert().values(department_name=data['department_name'] if "department_name" in data else None,
-                                                    number_of_partners=to_int(
-                                                        data['number_of_partners']) if "number_of_partners" in data and data['number_of_partners'] != '' else None,
-                                                    qualified_lawyers=to_int(
-                                                        data['qualified_lawyers']) if "qualified_lawyers" in data and data['qualified_lawyers'] != '' else None,
-                                                    department_best_known_for=data['department_best_known'] if "department_best_known" in data else None,
-                                                    submission_data_id=submission_data_id
-                                                    )
-    conn = engine.connect()
-    result = conn.execute(insert)
-    id = result.inserted_primary_key[0]
+    if len(data) > 0:
+        insert = department_information.insert().values(department_name=data['department_name'] if "department_name" in data else None,
+                                                        number_of_partners=to_int(
+                                                            data['number_of_partners']) if "number_of_partners" in data and data['number_of_partners'] != '' else None,
+                                                        qualified_lawyers=to_int(
+                                                            data['qualified_lawyers']) if "qualified_lawyers" in data and data['qualified_lawyers'] != '' else None,
+                                                        department_best_known_for=data['department_best_known'] if "department_best_known" in data else None,
+                                                        submission_data_id=submission_data_id
+                                                        )
+        conn = engine.connect()
+        result = conn.execute(insert)
+        id = result.inserted_primary_key[0]
     for person in data.get("heads_of_department_details", []):
         detailed = heads_of_department.insert().values(
             name=person['name']if "name" in person else None,
@@ -352,13 +355,6 @@ def insert_confidential_information(submission_data_id, data):
         )
         conn = engine.connect()
         result = conn.execute(insert)
-
-
-def to_int(str):
-    try:
-        return int(str)
-    except:
-        return None
 
 
 def create_database():
